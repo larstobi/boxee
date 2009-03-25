@@ -1,0 +1,151 @@
+--- ./xbmc/FileSystem/FileCurl.cpp.orig	2009-03-06 11:39:14.000000000 +0100
++++ ./xbmc/FileSystem/FileCurl.cpp	2009-03-24 19:08:33.241967255 +0100
+@@ -25,7 +25,6 @@
+ #include "URL.h"
+ #include "Settings.h"
+ #include "utils/log.h"
+-#include "Application.h"
+ 
+ #include <sys/stat.h>
+ 
+@@ -69,14 +68,6 @@
+ }
+ 
+ /* curl calls this routine to get more data */
+-extern "C" size_t dummy_callback(char *buffer,
+-                                 size_t size,
+-                                 size_t nitems,
+-                                 void *userp)
+-{
+-  return 0;  
+-}
+-
+ extern "C" size_t write_callback(char *buffer,
+                size_t size,
+                size_t nitems,
+@@ -264,10 +255,6 @@
+   if (CURLE_OK == g_curlInterface.easy_getinfo(m_easyHandle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &length))
+     m_fileSize = m_filePos + (__int64)length;
+ 
+-  char *url = NULL; 
+-  if (CURLE_OK == g_curlInterface.easy_getinfo(m_easyHandle, CURLINFO_EFFECTIVE_URL, (char*)&url))
+-    m_strEffectiveUrl = url;
+-    
+   long response;
+   if (CURLE_OK == g_curlInterface.easy_getinfo(m_easyHandle, CURLINFO_RESPONSE_CODE, &response))
+     return response;
+@@ -404,7 +391,7 @@
+   if( m_ftpport.length() > 0 )
+     g_curlInterface.easy_setopt(h, CURLOPT_FTPPORT, m_ftpport.c_str());
+   else
+-    g_curlInterface.easy_setopt(h, CURLOPT_FTPPORT, NULL);
++    g_curlInterface.easy_setopt(h, CURLOPT_FTPPORT, (void*)NULL);
+ 
+   // allow curl to not use the ip address in the returned pasv response
+   if( m_ftppasvip )
+@@ -435,11 +422,13 @@
+   if(m_timeout == 0)
+     m_timeout = g_advancedSettings.m_curlclienttimeout;
+ 
++  // disable signal generation and timeouts in curl - this causes crashes in multithreaded apps
++  curl_easy_setopt(h, CURLOPT_NOSIGNAL , 1);
+   curl_easy_setopt(h, CURLOPT_DNS_CACHE_TIMEOUT , 0);
+-  g_curlInterface.easy_setopt(h, CURLOPT_CONNECTTIMEOUT, m_timeout);
+ 
+   /*
+   // set our timeouts, we abort connection after m_timeout, and reads after no data for m_timeout seconds
++  g_curlInterface.easy_setopt(h, CURLOPT_CONNECTTIMEOUT, m_timeout);
+   g_curlInterface.easy_setopt(h, CURLOPT_LOW_SPEED_LIMIT, 1);
+   g_curlInterface.easy_setopt(h, CURLOPT_LOW_SPEED_TIME, m_timeout);
+   */
+@@ -617,7 +606,6 @@
+ 
+   CLog::Log(LOGDEBUG, "FileCurl::Open(%p) %s", (void*)this, m_url.c_str());  
+ 
+-  m_state->m_strEffectiveUrl = m_url;
+   m_state->Init(); 
+   
+   // setup common curl options
+@@ -642,8 +630,6 @@
+     throw new CRedirectException(new CFileShoutcast); 
+   }
+ 
+-  m_url = m_state->m_strEffectiveUrl;
+-  
+   m_multisession = false;
+   if(m_url.Left(5).Equals("http:") || m_url.Left(6).Equals("https:"))
+   {
+@@ -801,18 +787,33 @@
+   SetCommonOptions(m_state); 
+   SetRequestHeaders(m_state);
+   g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_TIMEOUT, 5);
+-  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_NOBODY, 0);
+-  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_WRITEFUNCTION, (void*)dummy_callback);
+-  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_FOLLOWLOCATION, 1);
+-  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_WRITEDATA, NULL); /* will cause write failure*/
+-  
+-  char err[4096];
+-  memset(err,0,4096);
+-  g_curlInterface.easy_setopt (m_state->m_easyHandle, CURLOPT_ERRORBUFFER, err);
+-  
++  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_NOBODY, 1);
++  g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_WRITEDATA, (void*)NULL); /* will cause write failure*/
++
+   CURLcode result = g_curlInterface.easy_perform(m_state->m_easyHandle);
+ 
+-  if( result != CURLE_OK && result != CURLE_WRITE_ERROR ) // we get write error since we cut off the stream prematurely 
++  
++  if (result == CURLE_GOT_NOTHING || result == CURLE_HTTP_RETURNED_ERROR)
++  {
++    /* some http servers and shoutcast servers don't give us any data on a head request */
++    /* request normal and just fail out, it's their loss */
++    /* somehow curl doesn't reset CURLOPT_NOBODY properly so reset everything */    
++    SetCommonOptions(m_state);
++    SetRequestHeaders(m_state);
++    g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_TIMEOUT, 5);
++    g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_RANGE, "0-0");
++    g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_WRITEDATA, (void*)NULL); /* will cause write failure*/    
++    result = g_curlInterface.easy_perform(m_state->m_easyHandle);
++  }
++
++  if(result == CURLE_HTTP_RANGE_ERROR )
++  {
++    /* crap can't use the range option, disable it and try again */
++    g_curlInterface.easy_setopt(m_state->m_easyHandle, CURLOPT_RANGE, (void*)NULL);
++    result = g_curlInterface.easy_perform(m_state->m_easyHandle);
++  }
++
++  if( result != CURLE_WRITE_ERROR && result != CURLE_OK )
+   {
+     m_state->Disconnect();
+     errno = ENOENT;
+@@ -876,7 +877,7 @@
+ 
+   // only attempt to fill buffer if transactions still running and buffer
+   // doesnt exceed required size already
+-  while ((unsigned int)m_buffer.GetMaxReadSize() < want && m_buffer.GetMaxWriteSize() > 0 && !g_application.m_bStop)
++  while ((unsigned int)m_buffer.GetMaxReadSize() < want && m_buffer.GetMaxWriteSize() > 0 )
+   {
+     /* if there is data in overflow buffer, try to use that first */
+     if(m_overflowSize)
+@@ -907,13 +908,13 @@
+         while((msg = g_curlInterface.multi_info_read(m_multiHandle, &msgs)))
+         {
+           long nRet=200;
+-	        curl_easy_getinfo(msg->easy_handle, CURLINFO_RESPONSE_CODE, &nRet);
++	      curl_easy_getinfo(msg->easy_handle, CURLINFO_RESPONSE_CODE, &nRet);
+           if (nRet == 416) 
+           {
+             //m_seekable = false;
+             return false;
+           }
+-          
++
+           if (msg->msg == CURLMSG_DONE)
+             return (msg->data.result == CURLE_OK);
+         }
+@@ -1034,4 +1035,3 @@
+ {
+    m_strCookieFileName = strCookieFile;
+ }
+-

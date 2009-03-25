@@ -1,0 +1,48 @@
+--- xbmc/FileSystem/FileSmb.cpp.orig	2009-03-25 08:31:43.681528591 +0100
++++ xbmc/FileSystem/FileSmb.cpp	2009-03-25 08:32:50.620562342 +0100
+@@ -123,13 +123,6 @@
+     m_context = smbc_new_context();
+ 
+ #ifdef _LINUX
+-    smbc_setDebug(m_context, 0);
+-    smbc_setFunctionAuthData(m_context, xb_smbc_auth);
+-    orig_cache = smbc_getFunctionGetCachedServer(m_context);
+-    smbc_setFunctionGetCachedServer(m_context, xb_smbc_cache);
+-    smbc_setOptionOneSharePerServer(m_context, false); 
+-    smbc_setOptionBrowseMaxLmbCount(m_context, 0);
+-    smbc_setTimeout(m_context, g_advancedSettings.m_sambaclienttimeout * 1000); 
+ 
+ 
+     // Create ~/.smb/smb.conf
+@@ -162,7 +155,6 @@
+       fclose(f);
+     }
+     
+-    smbc_setWorkgroup(m_context,  strdup(g_guiSettings.GetString("smb.workgroup").c_str()));
+ #endif
+     
+     // initialize samba and do some hacking into the settings
+@@ -281,11 +273,6 @@
+   char* buffer = (char*)malloc(buffer_len);
+   memset(buffer,0,buffer_len);
+   char *strSrc = strdup(value.c_str()); // urlencode requires char* and not const char *. just to be on the safe side
+-#ifdef _WIN32
+-  smbc_urlencode(buffer, strSrc, buffer_len);
+-#else
+-  SMBC_urlencode(buffer, strSrc, buffer_len);
+-#endif
+   free(strSrc);
+   CStdString encoded = buffer;
+   free(buffer);
+@@ -298,11 +285,6 @@
+   char* buffer = (char*)malloc(buffer_len);
+   memset(buffer,0,buffer_len);
+   char *strSrc = strdup(value.c_str()); // urlencode requires char* and not const char *. just to be on the safe side
+-#ifdef _WIN32
+-  smbc_urldecode(buffer, strSrc, buffer_len-1);
+-#else
+-  SMBC_urldecode(buffer, strSrc, buffer_len-1);
+-#endif
+   free(strSrc);
+   CStdString decoded = buffer;
+   free(buffer);

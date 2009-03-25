@@ -1,0 +1,11 @@
+--- xbmc/utils/CharsetConverter.h.orig	2009-03-24 19:29:59.598093628 +0100
++++ xbmc/utils/CharsetConverter.h	2009-03-24 19:30:26.966343256 +0100
+@@ -28,7 +28,7 @@
+ #else
+ #include <iconv.h>
+ #include <fribidi/fribidi.h>
+-#include <fribidi/fribidi_char_sets.h>
++#include <fribidi/fribidi-char-sets.h>
+ #endif
+ #include "CriticalSection.h"
+ 

@@ -1,0 +1,13 @@
+--- xbmc/utils/ArabicShaping.h.orig	2009-03-24 20:01:30.965343857 +0100
++++ xbmc/utils/ArabicShaping.h	2009-03-24 20:01:45.367968410 +0100
+@@ -30,7 +30,9 @@
+ #include "lib/libfribidi/fribidi.h"
+ #else
+ #include <fribidi/fribidi.h>
+-#include <fribidi/fribidi_char_sets.h>
++#include <fribidi/fribidi-char-sets.h>
++#define FRIBIDI_TRUE	1
++#define FRIBIDI_FALSE	0
+ #endif
+ 
+ /**
